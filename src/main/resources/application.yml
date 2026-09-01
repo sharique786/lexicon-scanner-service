@@ -1,0 +1,105 @@
+# ══════════════════════════════════════════════════════════════════
+# Lexicon Scanner Service — application configuration
+# ══════════════════════════════════════════════════════════════════
+
+spring:
+  application:
+    name: lexicon-scanner-service
+
+  # ── Multipart upload limits ────────────────────────────────────
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 52MB
+      file-size-threshold: 2MB
+
+  # ── Jackson ───────────────────────────────────────────────────
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      indent-output: false
+
+# ── Server ────────────────────────────────────────────────────────
+server:
+  port: 8090
+
+  # Tomcat GZIP response compression (applies to API responses)
+  compression:
+    enabled: true
+    min-response-size: 1024
+    mime-types:
+      - application/json
+      - text/html
+      - text/plain
+      - application/javascript
+      - text/css
+
+  # Servlet context path — no prefix; paths start at /
+  servlet:
+    context-path: /
+
+# ── Actuator ──────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+  endpoint:
+    health:
+      show-details: always
+
+# ══════════════════════════════════════════════════════════════════
+# Lexicon Scanner application properties
+# ══════════════════════════════════════════════════════════════════
+lexicon:
+
+  # Upstream Lexicon Compile Service connection
+  compile-service:
+    base-url: http://localhost:8080          # override via env / profile
+    connect-timeout: PT5S                    # ISO-8601 duration: 5 seconds
+    read-timeout: PT30S                      # ISO-8601 duration: 30 seconds
+    default-rule-name: scanner-test-rule
+
+  # Scanner (Hyperscan) pipeline limits
+  scanner:
+    max-terms: 500
+    max-message-length: 500000              # ~500 KB of text
+    fallback-to-java-regex: true            # transparent fallback when HS scan fails
+    risk-driver-default: Compliance Scan
+
+# ══════════════════════════════════════════════════════════════════
+# Docker profile — used when running in Docker / docker-compose
+# activate with: SPRING_PROFILES_ACTIVE=docker
+# ══════════════════════════════════════════════════════════════════
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+lexicon:
+  compile-service:
+    base-url: http://lexicon-compile-service:8080   # Docker service name
+
+# ══════════════════════════════════════════════════════════════════
+# cloud-run profile — GKE / Compute Engine deployment
+# Dockerfile sets: -Dspring.profiles.active=cloud-run
+# ══════════════════════════════════════════════════════════════════
+---
+spring:
+  config:
+    activate:
+      on-profile: cloud-run
+
+server:
+  port: 8090
+
+lexicon:
+  compile-service:
+    # Set via Cloud Run env var: LEXICON_COMPILE_SERVICE_BASE_URL
+    base-url: ${LEXICON_COMPILE_SERVICE_BASE_URL:http://lexicon-compile-service:8080}
+    connect-timeout: PT10S
+    read-timeout: PT60S
+  scanner:
+    fallback-to-java-regex: false   # production: fail fast if Hyperscan breaks

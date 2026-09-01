@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- ── Inherit Spring Boot 4 managed versions ──────────────────────────── -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.0.6</version>
+        <relativePath/>
+    </parent>
+
+    <!-- ── Project identity ────────────────────────────────────────────────── -->
+    <groupId>com.db.macs3.ecomms.spectre</groupId>
+    <artifactId>lexicon-scanner-service</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <name>Lexicon Scanner Service</name>
+    <description>
+        Testing harness for the Lexicon Compile Service.
+        Accepts lexicon terms (text or CSV) and communication messages
+        (text or file), calls the compile service for PCRE patterns, uses
+        Intel Hyperscan to scan messages, and returns highlighted match results
+        through a built-in micro-frontend web UI.
+    </description>
+
+    <!-- ── Properties ──────────────────────────────────────────────────────── -->
+    <properties>
+        <java.version>21</java.version>
+        <hyperscan.version>5.4.0-2.0.0</hyperscan.version>
+        <opencsv.version>5.9</opencsv.version>
+        <jacoco.version>0.8.12</jacoco.version>
+        <icu4j.version>73.2</icu4j.version>
+        <!-- JaCoCo injects argLine; @{argLine} expands it in Surefire -->
+        <argLine>-Dfile.encoding=UTF-8</argLine>
+    </properties>
+
+    <!-- ── Dependencies ────────────────────────────────────────────────────── -->
+    <dependencies>
+
+        <!-- Spring Boot starters -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!-- RestClient's MultipartBodyBuilder (used by LexiconCompileClient.compileCsv) now
+             touches org.reactivestreams.Publisher at class-load time even for a purely
+             synchronous multipart body — spring-boot-starter-web does not pull this in on
+             its own. Without it, every /compile/csv call throws NoClassDefFoundError at
+             runtime, not just in tests — a real production bug, not a test-only gap. -->
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+        </dependency>
+        <!-- Spring Boot 4 split @ServletComponentScan out of core spring-boot into this
+             module; spring-boot-starter-web does not pull it in transitively. Without this,
+             the project fails to compile at all (LexiconScannerApp.java's @ServletComponentScan
+             import) — unrelated to any lexicon/AND-NOT/proximity work, found only because it
+             blocked verifying those changes actually compile. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-web-server</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- Intel Hyperscan Java binding — bundles native .so (glibc) -->
+        <dependency>
+            <groupId>com.gliwka.hyperscan</groupId>
+            <artifactId>hyperscan</artifactId>
+            <version>${hyperscan.version}</version>
+        </dependency>
+
+        <!-- CSV parsing (same version as Lexicon Compile Service) -->
+        <dependency>
+            <groupId>com.opencsv</groupId>
+            <artifactId>opencsv</artifactId>
+            <version>${opencsv.version}</version>
+        </dependency>
+
+        <!-- ICU4J — NFC normalisation for multi-language term preprocessing -->
+        <dependency>
+            <groupId>com.ibm.icu</groupId>
+            <artifactId>icu4j</artifactId>
+            <version>${icu4j.version}</version>
+        </dependency>
+
+        <!-- ── Test dependencies ──────────────────────────────────────────── -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Spring Boot 4 split @WebMvcTest/MockMvc test support out of spring-boot-starter-test
+             into this module (mirrors the spring-boot-web-server split above). Without it,
+             ScanControllerTest fails to compile — unrelated to any lexicon/AND-NOT/proximity work. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <!-- ── Build plugins ───────────────────────────────────────────────────── -->
+    <build>
+        <plugins>
+
+            <!-- Spring Boot repackage -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <!-- Enable JDK 21 preview features at runtime -->
+                    <jvmArguments>--enable-preview</jvmArguments>
+                    <layers>
+                        <enabled>true</enabled>
+                    </layers>
+                </configuration>
+            </plugin>
+
+            <!-- Compiler: Java 21 with preview features -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <release>21</release>
+                    <enablePreview>true</enablePreview>
+                    <compilerArgs>
+                        <arg>--enable-preview</arg>
+                        <arg>-parameters</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+
+            <!-- Surefire: pass preview flag + JaCoCo argLine -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>@{argLine} --enable-preview -Dfile.encoding=UTF-8</argLine>
+                </configuration>
+            </plugin>
+
+            <!-- Failsafe: integration tests (IT suffix) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <argLine>@{argLine} --enable-preview -Dfile.encoding=UTF-8</argLine>
+                    <includes>
+                        <include>**/*IntegrationTest.java</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- JaCoCo code coverage -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <!-- Inject the agent before unit tests -->
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals><goal>prepare-agent</goal></goals>
+                    </execution>
+                    <!-- Inject the agent before integration tests -->
+                    <execution>
+                        <id>prepare-agent-integration</id>
+                        <goals><goal>prepare-agent-integration</goal></goals>
+                    </execution>
+                    <!-- Unit test report after test phase -->
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals><goal>report</goal></goals>
+                        <configuration>
+                            <outputDirectory>${project.reporting.outputDirectory}/jacoco</outputDirectory>
+                        </configuration>
+                    </execution>
+                    <!-- Integration test report -->
+                    <execution>
+                        <id>report-integration</id>
+                        <phase>verify</phase>
+                        <goals><goal>report-integration</goal></goals>
+                    </execution>
+                    <!-- Enforce minimum coverage thresholds -->
+                    <execution>
+                        <id>check</id>
+                        <phase>verify</phase>
+                        <goals><goal>check</goal></goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.70</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.60</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                            <!-- Exclude generated/config classes from threshold -->
+                            <excludes>
+                                <exclude>**/LexiconScannerApp.class</exclude>
+                                <exclude>**/config/**</exclude>
+                                <exclude>**/model/Models*.class</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>

@@ -1,0 +1,11 @@
+term_id,term_description,risk_driver_name
+scan::1,insider AND trading,Market Abuse
+scan::2,pump OR dump,Market Manipulation
+scan::3,"front running",Market Abuse
+scan::4,price NEAR{5} manipulation,Market Manipulation
+scan::5,spoofing OR layering,Market Manipulation
+scan::6,buy FOLLOWEDBY{3} shares,Insider Dealing
+scan::7,trade*,General
+scan::8,💰 OR 🤫,Communication Flags
+scan::9,내부자 OR 거래,Market Abuse
+scan::10,内幕 OR 交易,Market Abuse
