@@ -117,6 +117,35 @@ class LexiconCompileClientTest {
     }
 
     @Test
+    @DisplayName("compile() HTTP 400 carries the Compile Service's validation error and details")
+    void compile_validationError_carriesDetails() {
+        mockServer.expect(requestTo(COMPILE_URL))
+                  .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                          .contentType(MediaType.APPLICATION_JSON)
+                          .body("{\"status\":400,\"error\":\"Validation failed\","
+                                + "\"details\":[\"terms[0].termDescription: termDescription must not be blank\"],"
+                                + "\"timestamp\":\"2026-01-01T00:00:00Z\"}"));
+
+        assertThatThrownBy(() -> client.compile(List.of("bad"), null))
+                .isInstanceOfSatisfying(LexiconCompileException.class, e -> {
+                    assertThat(e.isValidationFailure()).isTrue();
+                    assertThat(e.upstreamStatus()).isEqualTo(400);
+                    assertThat(e.details()).containsExactly("terms[0].termDescription: termDescription must not be blank");
+                    assertThat(e.getMessage()).contains("client error", "Validation failed", "must not be blank");
+                });
+    }
+
+    @Test
+    @DisplayName("compile() HTTP 500 is not a validation failure")
+    void compile_serverError_notValidationFailure() {
+        mockServer.expect(requestTo(COMPILE_URL)).andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+
+        assertThatThrownBy(() -> client.compile(List.of("x"), null))
+                .isInstanceOfSatisfying(LexiconCompileException.class,
+                        e -> assertThat(e.isValidationFailure()).isFalse());
+    }
+
+    @Test
     @DisplayName("compile() throws LexiconCompileException on HTTP 400")
     void compile_clientError_throwsException() {
         mockServer.expect(requestTo(COMPILE_URL))

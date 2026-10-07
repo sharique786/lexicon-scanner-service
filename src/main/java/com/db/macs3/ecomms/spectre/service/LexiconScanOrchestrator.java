@@ -456,16 +456,8 @@ public class LexiconScanOrchestrator {
                 continue;
             }
             try {
-                // ResolvedPatternTree.zip() pulls both the required AND excluded chain's
-                // leaves from ONE shared cursor, in the same left-to-right order
-                // resolvedPatterns renders them (required side first, then the AND NOT
-                // excluded side) — regexPattern alone only carries the required side, so
-                // exclusionRegex's leaves must be appended, never passed separately.
-                List<String> leaves = new ArrayList<>(r.regexPattern());
-                if (r.exclusionRegex() != null) {
-                    leaves.addAll(r.exclusionRegex());
-                }
-                treesByTermId.put(r.termId(), ResolvedPatternTree.build(r.termId(), r.resolvedPatterns(), leaves));
+                treesByTermId.put(r.termId(), ResolvedPatternTree.build(
+                        r.termId(), r.resolvedPatterns(), r.regexPattern(), r.exclusionRegex()));
             } catch (ResolvedPatternTree.TermMetadataParseException e) {
                 log.error("Term '{}' PASS-compiled but resolvedPatterns could not be parsed — "
                         + "treating as failed: {}", r.termId(), e.getMessage());

@@ -365,7 +365,8 @@ function renderTermCard(t){
   else if(DC){cc='dc';hc='dc';bd='<span class="lbdg dc">DISCLAIMER ONLY</span>';}
   else if(!H){cc='nm';hc='nm';bd='<span class="lbdg nh">NO HIT</span>';}
   else{cc='hm';hc='hm';bd='<span class="lbdg pa">MATCHED</span>';}
-  const pat=t.translatedPattern?`<div class="lpat" title="Hyperscan PCRE">${eh(t.translatedPattern)}</div>`:'';
+  const pats=Array.isArray(t.translatedPattern)?t.translatedPattern:(t.translatedPattern?[t.translatedPattern]:[]);
+  const pat=pats.length?`<div class="lpat" title="${pats.length>1?'Decomposed into '+pats.length+' leaf patterns; distance/order verified from resolvedPatterns':'Compiled pattern'}">${pats.map(eh).join('<br>')}</div>`:'';
   const pills=(t.matches||[]).map(m=>
     `<span class="lmpill${m.inDisclaimer?' dcpill':''}" title="${m.startCharIndex}-${m.endCharIndex}${m.inDisclaimer?' — not counted as an alert (found in disclaimer)':''}">${eh(m.matchedText)}</span>`
   ).join('');
@@ -394,13 +395,13 @@ function downloadReport(){
       if(t.compilationStatus==='FAILED'){
         rows.push([msg.messageId,t.termDescription,'','FAILED',d.termType||'',t.compilationError||'','No','N/A','N/A']);
       } else if(!t.matches||t.matches.length===0){
-        rows.push([msg.messageId,t.termDescription,t.translatedPattern||'','PASS',d.termType||'','','No','N/A',t.excludedByAndNot?'Yes':'No']);
+        rows.push([msg.messageId,t.termDescription,(Array.isArray(t.translatedPattern)?t.translatedPattern.join(' | '):(t.translatedPattern||'')),'PASS',d.termType||'','','No','N/A',t.excludedByAndNot?'Yes':'No']);
       } else {
         t.matches.forEach(m=>{
           // A term excluded by AND NOT never counts as an alert, regardless of
           // whether this specific match also happened to be in a disclaimer.
           const alertFlag=(t.excludedByAndNot||m.inDisclaimer)?'No':'Yes';
-          rows.push([msg.messageId,t.termDescription,t.translatedPattern||'','PASS',d.termType||'',
+          rows.push([msg.messageId,t.termDescription,(Array.isArray(t.translatedPattern)?t.translatedPattern.join(' | '):(t.translatedPattern||'')),'PASS',d.termType||'',
                      m.matchedText,alertFlag,m.inDisclaimer?'Yes':'No',t.excludedByAndNot?'Yes':'No']);
         });
       }

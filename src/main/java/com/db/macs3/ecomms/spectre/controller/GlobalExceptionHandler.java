@@ -27,6 +27,15 @@ public class GlobalExceptionHandler {
     /** Upstream Lexicon Compile Service unavailable or returned an error. */
     @ExceptionHandler(LexiconCompileException.class)
     public ResponseEntity<Map<String, Object>> handleCompileException(LexiconCompileException e) {
+        if (e.isValidationFailure()) {
+            // The Compile Service judged the submitted terms invalid — the caller's problem, not an outage.
+            log.warn("Lexicon Compile Service rejected the request: {}", e.getMessage());
+            Map<String, Object> body = new java.util.LinkedHashMap<>(error(400, e.getMessage()));
+            if (!e.details().isEmpty()) {
+                body.put("details", e.details());
+            }
+            return ResponseEntity.badRequest().body(body);
+        }
         log.error("Lexicon Compile Service error: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(error(502, e.getMessage()));
     }

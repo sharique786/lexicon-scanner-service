@@ -81,7 +81,8 @@ class CsvParserServiceTest {
 
         List<String> result = service.parseTermDescriptions(file);
 
-        assertThat(result).containsExactly("spoofing OR layering", "\"front running\"");
+        // A quoted CSV field is unquoted by the parser (RFC 4180), so the quotes are not part of the term.
+        assertThat(result).containsExactly("spoofing OR layering", "front running");
     }
 
     @Test

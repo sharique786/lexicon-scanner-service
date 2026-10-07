@@ -1,10 +1,10 @@
 package com.db.macs3.ecomms.spectre.model;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 /**
  * The evaluable form of one term's {@code resolvedPatterns} string — the
@@ -68,33 +68,58 @@ public sealed interface ResolvedPatternTree {
 
     /**
      * Parses {@code resolvedPatterns}'s SHAPE (never its leaf text — see
-     * class Javadoc) and zips it against {@code regexPatternLeaves} in
-     * left-to-right order to build an evaluable tree.
+     * class Javadoc) and pairs it, side by side, with the compile response's
+     * pattern lists to build an evaluable tree.
      *
-     * @param termId             for error messages only
-     * @param resolvedPatterns   the exact {@code resolvedPatterns} string from the compile response
-     * @param regexPatternLeaves the exact {@code regexPattern} list — must contain exactly as many
-     *                           entries as {@code resolvedPatterns}'s shape has leaves, in the same order
-     * @throws TermMetadataParseException on any structural mismatch
+     * <p>Each side is resolved independently, per the Compile Service's
+     * contract ({@code TermCompilationResult} Javadoc):
+     * <ul>
+     *   <li><b>pattern count == the shape's leaf count for that side</b> — the
+     *       side was decomposed into gap-less leaves; zipped positionally, with
+     *       NEAR/FOLLOWEDBY distance and order verified by
+     *       {@link com.db.macs3.ecomms.spectre.service.ResolvedPatternMatcher};</li>
+     *   <li><b>exactly one pattern, although the shape has several leaves</b> — the
+     *       side compiled as ONE self-contained pattern with any gap already
+     *       embedded in the regex itself (Hyperscan enforced it on the Compile
+     *       Service side; Java's regex engine enforces it here). It becomes a
+     *       single-leaf chain with no operators.</li>
+     *   <li>anything else — a structural mismatch.</li>
+     * </ul>
+     *
+     * @param termId           for error messages only
+     * @param resolvedPatterns the exact {@code resolvedPatterns} string from the compile response
+     * @param regexPattern     the exact {@code regexPattern} list (required side)
+     * @param exclusionRegex   the exact {@code exclusionRegex} list (excluded side); null/empty
+     *                         unless the term is AND NOT
+     * @throws TermMetadataParseException on any structural mismatch or uncompilable pattern
      */
-    static ResolvedPatternTree build(String termId, String resolvedPatterns, List<String> regexPatternLeaves) {
-        if (regexPatternLeaves == null || regexPatternLeaves.isEmpty()) {
+    static ResolvedPatternTree build(String termId, String resolvedPatterns,
+                                     List<String> regexPattern, List<String> exclusionRegex) {
+        if (regexPattern == null || regexPattern.isEmpty()) {
             throw new TermMetadataParseException(
-                    "Term '" + termId + "' has a resolvedPatterns value but no regexPattern leaves to zip it against.");
+                    "Term '" + termId + "' has a resolvedPatterns value but no regexPattern to evaluate.");
         }
         if (resolvedPatterns == null || resolvedPatterns.isBlank()) {
             throw new TermMetadataParseException(
-                    "Term '" + termId + "' has regexPattern leaves but no resolvedPatterns value to parse.");
+                    "Term '" + termId + "' has regexPattern but no resolvedPatterns value to parse.");
         }
+        boolean hasExclusion = exclusionRegex != null && !exclusionRegex.isEmpty();
         ShapeNode shape = parseShape(termId, resolvedPatterns.trim());
-        Iterator<String> cursor = regexPatternLeaves.iterator();
-        ResolvedPatternTree tree = zip(termId, shape, cursor);
-        if (cursor.hasNext()) {
-            throw new TermMetadataParseException(
-                    "Term '" + termId + "': regexPattern has more leaves than resolvedPatterns' shape implies ("
-                    + regexPatternLeaves.size() + " provided).");
+
+        if (shape instanceof ShapeNode.AndNotShape andNot) {
+            if (!hasExclusion) {
+                throw new TermMetadataParseException(
+                        "Term '" + termId + "': resolvedPatterns has an AND NOT side but exclusionRegex is empty.");
+            }
+            return new AndNot(
+                    buildSide(termId, "regexPattern", andNot.required(), regexPattern),
+                    buildSide(termId, "exclusionRegex", andNot.excluded(), exclusionRegex));
         }
-        return tree;
+        if (hasExclusion) {
+            throw new TermMetadataParseException(
+                    "Term '" + termId + "': exclusionRegex is present but resolvedPatterns has no AND NOT.");
+        }
+        return buildSide(termId, "regexPattern", shape, regexPattern);
     }
 
     // ── Shape discovery (adapted from the Compile Service's reference matcher — shape only, no leaf text) ──
@@ -186,24 +211,33 @@ public sealed interface ResolvedPatternTree {
                 "Term '" + termId + "' has unbalanced parentheses in resolvedPatterns: " + text);
     }
 
-    // ── Zipping the discovered shape against regexPattern's leaves ──────────
+    // ── Pairing one side's shape with that side's pattern list ──────────────
 
-    static ResolvedPatternTree zip(String termId, ShapeNode shape, Iterator<String> cursor) {
-        if (shape instanceof ShapeNode.AndNotShape andNot) {
-            return new AndNot(
-                    zip(termId, andNot.required(), cursor),
-                    zip(termId, andNot.excluded(), cursor));
-        }
-        ShapeNode.ChainShape chainShape = (ShapeNode.ChainShape) shape;
-        List<Pattern> leaves = new ArrayList<>(chainShape.leafCount());
-        for (int i = 0; i < chainShape.leafCount(); i++) {
-            if (!cursor.hasNext()) {
-                throw new TermMetadataParseException(
-                        "Term '" + termId + "': resolvedPatterns' shape implies more leaves than regexPattern provides.");
+    static Chain buildSide(String termId, String field, ShapeNode sideShape, List<String> patterns) {
+        ShapeNode.ChainShape shape = (ShapeNode.ChainShape) sideShape;
+        if (patterns.size() == shape.leafCount()) {
+            List<Pattern> leaves = new ArrayList<>(patterns.size());
+            for (String p : patterns) {
+                leaves.add(compileLeaf(termId, p));
             }
-            leaves.add(Pattern.compile(cursor.next(), JAVA_LEAF_FLAGS));
+            return new Chain(leaves, shape.operators(), shape.distances());
         }
-        return new Chain(leaves, chainShape.operators(), chainShape.distances());
+        if (patterns.size() == 1) {
+            // One self-contained pattern: its NEAR/FOLLOWEDBY gaps live inside the regex itself.
+            return new Chain(List.of(compileLeaf(termId, patterns.get(0))), List.of(), List.of());
+        }
+        throw new TermMetadataParseException(
+                "Term '" + termId + "': " + field + " has " + patterns.size() + " pattern(s) but resolvedPatterns' "
+                + "shape implies " + shape.leafCount() + " leaf(s) (expected that many, or exactly one).");
+    }
+
+    private static Pattern compileLeaf(String termId, String regex) {
+        try {
+            return Pattern.compile(regex, JAVA_LEAF_FLAGS);
+        } catch (PatternSyntaxException e) {
+            throw new TermMetadataParseException(
+                    "Term '" + termId + "': pattern is not valid for Java regex evaluation: " + e.getDescription());
+        }
     }
 
     /** Thrown when a term's {@code resolvedPatterns} cannot be structurally parsed or zipped. */

@@ -268,7 +268,7 @@ class MultiLanguageScanIntegrationTest {
     void en_wildcard_matchesDerivedForms() {
         mockCompile("trade\\S*", 1, false);
 
-        for (String word : new String[]{"trading", "trader", "traded", "tradeoff"}) {
+        for (String word : new String[]{"trades", "trader", "traded", "tradeoff"}) {
             mockCompile("trade\\S*", 1, false);
             ScanResponse resp = orchestrator.scan(
                 TermType.NATURAL_LANGUAGE,

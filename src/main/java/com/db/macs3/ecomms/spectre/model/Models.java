@@ -158,11 +158,11 @@ public final class Models {
          * from {@code translatedPattern}/{@code exclusionPattern} by Compile
          * Service commit {@code a0717b3}. Both are lists, not single strings:
          * one entry for a term simple enough to compile as a single pattern;
-         * several when the term used {@code NEAR{n}}/{@code FOLLOWEDBY{n}}
-         * and the Compile Service decomposed it into independent leaf
-         * patterns — unconditionally now, not only as a "pattern too large"
-         * fallback (see {@code TermCompilationResult} class Javadoc,
-         * compile-service repo). This project no longer scans these leaves
+         * several only as a fallback, when a side was too large to compile as one
+         * pattern and the Compile Service split it into independent, gap-less
+         * leaves (see {@code TermCompilationResult} class Javadoc,
+         * compile-service repo). A single entry may therefore already embed
+         * its NEAR/FOLLOWEDBY gap in the regex itself. This project no longer scans these leaves
          * with Hyperscan directly; see {@code resolvedPatterns} below and
          * {@link com.db.macs3.ecomms.spectre.model.ResolvedPatternTree}.
          *
@@ -241,12 +241,26 @@ public final class Models {
      * @param originalText            the message exactly as supplied by the user
      * @param strippedText            HTML-stripped, whitespace-collapsed text (what Hyperscan scans)
      * @param strippedToOriginalIndex per-character offset map, length == strippedText.length()
+     * @param strippedToOriginalEnd   optional: exclusive END of the original text each stripped character
+     *                                came from - differs from {@code index + 1} only for a character decoded
+     *                                from a multi-character HTML entity (e.g. {@code &amp;}); may be null
      */
     public record StrippedMessage(
             String originalText,
             String strippedText,
-            int[] strippedToOriginalIndex
+            int[] strippedToOriginalIndex,
+            int[] strippedToOriginalEnd
     ) {
+
+        /**
+         * Convenience constructor for a stripped message in which every stripped
+         * character came from exactly one original character (no multi-character
+         * constructs such as HTML entities): each character's original end is simply
+         * its original index + 1.
+         */
+        public StrippedMessage(String originalText, String strippedText, int[] strippedToOriginalIndex) {
+            this(originalText, strippedText, strippedToOriginalIndex, null);
+        }
 
         /**
          * Maps a {@code [strippedStart, strippedEnd)} span (as reported by
@@ -268,7 +282,9 @@ public final class Models {
             int safeStart = Math.max(0, Math.min(strippedStart, strippedToOriginalIndex.length - 1));
             int safeEnd   = Math.max(safeStart + 1, Math.min(strippedEnd, strippedToOriginalIndex.length));
             int originalStart = strippedToOriginalIndex[safeStart];
-            int originalEnd   = strippedToOriginalIndex[safeEnd - 1] + 1;
+            int originalEnd   = strippedToOriginalEnd != null
+                    ? strippedToOriginalEnd[safeEnd - 1]
+                    : strippedToOriginalIndex[safeEnd - 1] + 1;
             return new int[]{originalStart, originalEnd};
         }
 

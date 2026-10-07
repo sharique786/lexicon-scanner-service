@@ -288,7 +288,7 @@ class ScanControllerTest {
                 eq(new TermSource.TextTerms(List.of("insider AND trading", "pump OR dump", "\"front running\""))),
                 eq(new MessageSource.SingleText("message text")),
                 any(DisclaimerSource.class),
-                eq("scanner-test-run"));
+                org.mockito.ArgumentMatchers.isNull());
     }
 
     // ── POST /api/scan/json ──────────────────────────────────────────────────
@@ -390,8 +390,8 @@ class ScanControllerTest {
            .andExpect(status().isOk())
            .andExpect(jsonPath("$.scanId").isNotEmpty())
            .andExpect(jsonPath("$.scanDurationMs").isNumber())
-           .andExpect(jsonPath("$.htmlHighlightedMessage").isString())
-           .andExpect(jsonPath("$.termResults").isArray());
+           .andExpect(jsonPath("$.messageResults[0].htmlHighlightedMessage").isString())
+           .andExpect(jsonPath("$.messageResults[0].termResults").isArray());
     }
 
     // ── Fixtures ──────────────────────────────────────────────────────────────

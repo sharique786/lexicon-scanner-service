@@ -127,7 +127,7 @@ public class ScanController {
                 inputMode, resolvedTermType, messageMode, disclaimerInputMode);
 
         // ── Validate + resolve terms ──────────────────────────────────────────
-        if ("CSV".equalsIgnoreCase(inputMode) && (csvFile == null || csvFile.isEmpty())) {
+        if ("CSV".equalsIgnoreCase(inputMode) && csvFile == null) {
             return badRequest("Please upload a CSV file, or switch to \"Type Terms\" and enter at least one term.");
         }
         if ("CSV".equalsIgnoreCase(inputMode) && csvFile.getSize() == 0) {

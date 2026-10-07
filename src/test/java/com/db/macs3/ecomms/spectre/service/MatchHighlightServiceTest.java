@@ -198,7 +198,7 @@ class MatchHighlightServiceTest {
     @DisplayName("Arabic text — match on Arabic word produces correct <mark>")
     void buildHighlightedHtml_arabicText_correctHighlight() {
         String message = "معلومات سرية";
-        MatchHighlight match = new MatchHighlight(0, 8, "معلومات", false);
+        MatchHighlight match = new MatchHighlight(0, 7, "معلومات", false);
 
         String html = service.buildHighlightedHtml(message, List.of(match));
 
